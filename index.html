@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ciro Takip – Eczane Paketi v1 (Clean Reset)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    .btn { border:1px solid #e5e7eb; padding:0.375rem 0.75rem; border-radius:0.75rem; cursor:pointer; }
+    .btn:hover { background:#f1f5f9; }
+    .toggle-btn{ border:1px solid #e5e7eb; padding:0.375rem 0.75rem; border-radius:0.75rem; background:#fff; cursor:pointer; }
+    .toggle-btn:hover{ background:#f1f5f9; }
+    .hidden{ display:none }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+<header class="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+    <div class="w-8 h-8 grid place-items-center rounded-xl bg-slate-100 text-lg">💊</div>
+    <h1 class="text-xl font-bold">Ciro Takip – Eczane Paketi v1</h1>
+    <div class="ml-auto flex items-center gap-2">
+      <select id="currency" class="border rounded-xl px-3 py-1.5 text-sm">
+        <option value="TRY" selected>TRY ₺</option>
+        <option value="USD">USD $</option>
+        <option value="EUR">EUR €</option>
+      </select>
+      <select id="locale" class="border rounded-xl px-3 py-1.5 text-sm">
+        <option value="tr-TR" selected>tr-TR</option>
+        <option value="en-US">en-US</option>
+      </select>
+      <button id="exportBtn" class="btn">⬇️ Dışa Aktar</button>
+      <label class="btn cursor-pointer">⬆️ İçe Aktar<input id="importInput" type="file" accept=".csv,text/csv" class="hidden" /></label>
+      <button id="resetBtn" class="btn text-red-600">♻️ Sıfırla</button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto p-4 space-y-6">
+  <!-- KPI -->
+  <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="bg-white rounded-2xl shadow p-4"><div class="text-sm text-slate-600">Bugün</div><div class="text-lg font-bold" id="sum-today">₺0,00</div></div>
+    <div class="bg-white rounded-2xl shadow p-4"><div class="text-sm text-slate-600">Bu Ay</div><div class="text-lg font-bold" id="sum-month">₺0,00</div></div>
+    <div class="bg-white rounded-2xl shadow p-4"><div class="text-sm text-slate-600">SGK Yatacak Tutar</div><div class="text-lg font-bold" id="kpi-sgk">+ ₺0,00</div></div>
+    <div class="bg-white rounded-2xl shadow p-4"><div class="text-sm text-slate-600">Depo Ödenecek</div><div class="text-lg font-bold" id="kpi-depo">− ₺0,00</div></div>
+  </section>
+
+  <!-- Günlük Nakit -->
+  <section class="bg-white rounded-2xl shadow p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">Günlük Nakit</h2>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+      <div class="md:col-span-2"><label class="text-sm">Tarih</label><input type="date" id="input-date" class="w-full border rounded-xl px-3 py-2" /></div>
+      <div class="md:col-span-2"><label class="text-sm">Tutar</label><input type="text" id="input-amount" inputmode="decimal" class="w-full border rounded-xl px-3 py-2" /></div>
+      <div><label class="text-sm">Ödeme Türü</label><div class="w-full border rounded-xl px-3 py-2 bg-slate-50">NAKIT/POS</div><input type="hidden" id="input-paytype" value="NAKIT/POS"></div>
+      <div><label class="text-sm">Not</label><input type="text" id="input-note" class="w-full border rounded-xl px-3 py-2" /></div>
+      <div class="md:col-span-6 flex justify-end"><button id="addBtn" class="inline-flex items-center gap-2 bg-black text-white px-4 py-2 rounded-2xl">➕ Ekle</button></div>
+    </div>
+  </section>
+
+  <!-- SGK + Depo Ödemesi yan yana -->
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="bg-white rounded-2xl shadow p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold">SGK Tahsilatı Ekle</h3>
+        <button id="toggleSgkBtn" class="toggle-btn" onclick="toggleBoth()"><span>▾</span></button>
+      </div>
+      <div id="sgkBody">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <div><label class="text-sm">Tarih</label><input type="date" id="sgk-date" class="w-full border rounded-xl px-3 py-2"/></div>
+          <div><label class="text-sm">Tutar</label><input type="text" id="sgk-amount" class="w-full border rounded-xl px-3 py-2" inputmode="decimal"/></div>
+          <div><label class="text-sm">Not</label><input type="text" id="sgk-note" class="w-full border rounded-xl px-3 py-2"/></div>
+        </div>
+        <div class="mt-3 flex justify-end"><button id="sgk-add" class="btn">➕ Tahsilat Kaydet</button></div>
+        <div class="mt-3 overflow-auto border rounded-2xl">
+          <table class="min-w-full text-sm">
+            <thead class="bg-slate-50"><tr><th class="px-3 py-2 text-left">Tarih</th><th class="px-3 py-2 text-right">Tutar</th><th class="px-3 py-2">Not</th><th class="px-3 py-2 text-right">Sil</th></tr></thead>
+            <tbody id="sgk-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="bg-white rounded-2xl shadow p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold">Depo Ödemesi</h3>
+        <button id="toggleDepoPBtn" class="toggle-btn" onclick="toggleBoth()"><span>▾</span></button>
+      </div>
+      <div id="depoPBody">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+          <div><label class="text-sm">Tarih</label><input type="date" id="depo-p-date" class="w-full border rounded-xl px-3 py-2"/></div>
+          <div><label class="text-sm">Tutar</label><input type="text" id="depo-p-amount" class="w-full border rounded-xl px-3 py-2" inputmode="decimal"/></div>
+          <div><label class="text-sm">Depo</label><input type="text" id="depo-p-supp" class="w-full border rounded-xl px-3 py-2"/></div>
+          <div><label class="text-sm">Not</label><input type="text" id="depo-p-note" class="w-full border rounded-xl px-3 py-2"/></div>
+        </div>
+        <div class="mt-3 flex justify-end"><button id="depo-p-add" class="btn">➕ Ödeme Kaydet</button></div>
+        <div class="mt-3 overflow-auto border rounded-2xl">
+          <table class="min-w-full text-sm">
+            <thead class="bg-slate-50"><tr><th class="px-3 py-2 text-left">Tarih</th><th class="px-3 py-2 text-right">Tutar</th><th class="px-3 py-2">Depo</th><th class="px-3 py-2">Not</th><th class="px-3 py-2 text-right">Sil</th></tr></thead>
+            <tbody id="depo-p-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Grafikler -->
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="bg-white rounded-2xl shadow p-4">
+      <div class="flex items-center justify-between mb-2"><h3 class="font-semibold">Son 30 Gün (Günlük)</h3></div>
+      <div class="h-64"><canvas id="chart-30d"></canvas></div>
+    </div>
+    <div class="bg-white rounded-2xl shadow p-4">
+      <div class="flex items-center justify-between mb-2"><h3 class="font-semibold">Bu Yıl (Aylık)</h3></div>
+      <div class="h-64"><canvas id="chart-monthly"></canvas></div>
+    </div>
+  </section>
+
+  <!-- Kayıtlar -->
+  <section class="bg-white rounded-2xl shadow p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">Kayıtlar</h2>
+      <button id="toggleRecordsBtn" class="toggle-btn" onclick="toggleSection('toggleRecordsBtn','recordsBody','collapse_records')"><span>▾</span></button>
+    </div>
+    <div id="recordsBody">
+      <div class="flex items-center justify-between mb-3">
+        <input id="search" class="border rounded-xl pl-3 pr-3 py-2" placeholder="Ara (tarih, tutar, not, ödeme)" />
+      </div>
+      <div class="overflow-auto border rounded-2xl">
+        <table class="min-w-full text-sm" id="table">
+          <thead class="bg-slate-50 text-slate-600"><tr><th class="text-left px-4 py-2">Tarih</th><th class="text-right px-4 py-2">Tutar</th><th class="text-left px-4 py-2">Ödeme</th><th class="text-left px-4 py-2">Not</th><th class="text-right px-4 py-2">Sil</th></tr></thead>
+          <tbody id="tbody"></tbody>
+          <tfoot class="bg-slate-50"><tr><td class="px-4 py-2 font-semibold">Toplam</td><td class="px-4 py-2 text-right font-semibold" id="sum-all">₺0,00</td><td colspan="3"></td></tr></tfoot>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Geçmiş Ciro (Günlük tablo + Son 12 Ay tablo) -->
+  <section class="bg-white rounded-2xl shadow p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">Geçmiş Ciro</h2>
+      <div class="flex items-center gap-2">
+        <button id="prevMonthBtn" class="btn">‹ Önceki</button>
+        <input type="month" id="monthPicker" class="border rounded-xl px-3 py-1.5" />
+        <button id="nextMonthBtn" class="btn">Sonraki ›</button>
+        <button id="toggleHistoryBtn" class="btn" onclick="toggleHistoryInline()"><span id="toggleIcon">▾</span></button>
+      </div>
+    </div>
+    <div id="historyBody" class="space-y-4">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div>
+          <h3 class="font-semibold mb-2"><span id="selMonthTitle">Seçili Ay</span> - Günlük Döküm</h3>
+          <div class="overflow-auto border rounded-2xl">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-50 text-slate-600"><tr><th class="text-left px-4 py-2">Gün</th><th class="text-right px-4 py-2">Tutar</th></tr></thead>
+              <tbody id="histDaysTbody"></tbody>
+              <tfoot class="bg-slate-50"><tr><td class="px-4 py-2 font-semibold">Toplam / Ortalama</td><td class="px-4 py-2 text-right font-semibold"><span id="histMonthSum">₺0,00</span> / <span id="histMonthAvg">₺0,00</span></td></tr></tfoot>
+            </table>
+          </div>
+          <div class="mt-3 h-56"><canvas id="chart-month-days"></canvas></div>
+        </div>
+        <div>
+          <h3 class="font-semibold mb-2">Son 12 Ay Özeti</h3>
+          <div class="overflow-auto border rounded-2xl">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-50 text-slate-600"><tr><th class="text-left px-4 py-2">Ay</th><th class="text-right px-4 py-2">Toplam</th></tr></thead>
+              <tbody id="last12Tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+// Helpers
+const todayStr = () => new Date().toISOString().slice(0,10);
+const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+const formatCurrency = (n,c,l) => new Intl.NumberFormat(l||'tr-TR',{style:'currency',currency:c||'TRY'}).format(n||0);
+const parseAmount = (v) => { if(typeof v==='number') return v; let s=String(v||'').trim().replace(/\s+/g,''); if(s.includes('.')&&s.includes(',')){s=s.replace(/\./g,'').replace(/,/g,'.')} else if(s.includes(',')){s=s.replace(/,/g,'.')} const n=Number(s); return Number.isFinite(n)?n:0; };
+const makeId = () => (crypto.randomUUID?crypto.randomUUID():('id-'+Date.now()+'-'+Math.random().toString(16).slice(2)));
+
+const $ = (id)=>document.getElementById(id);
+const state = {
+  entries: JSON.parse(localStorage.getItem('ciro_entries_v3')||'[]'),
+  sgkTx: JSON.parse(localStorage.getItem('sgk_tx_v1')||'[]'),
+  depoPay: JSON.parse(localStorage.getItem('depo_pay_v1')||'[]'),
+  currency: localStorage.getItem('ciro_currency') || 'TRY',
+  locale: localStorage.getItem('ciro_locale') || 'tr-TR',
+  selectedMonth: localStorage.getItem('ciro_sel_month') || new Date().toISOString().slice(0,7),
+  histCollapsed: localStorage.getItem('ciro_hist_collapsed') === '1'
+};
+
+function persist(){
+  localStorage.setItem('ciro_entries_v3', JSON.stringify(state.entries));
+  localStorage.setItem('sgk_tx_v1', JSON.stringify(state.sgkTx));
+  localStorage.setItem('depo_pay_v1', JSON.stringify(state.depoPay));
+  localStorage.setItem('ciro_currency', state.currency);
+  localStorage.setItem('ciro_locale', state.locale);
+  localStorage.setItem('ciro_sel_month', state.selectedMonth);
+  localStorage.setItem('ciro_hist_collapsed', state.histCollapsed ? '1':'0');
+}
+
+function init(){
+  $('input-date').value = todayStr();
+  $('currency').value = state.currency;
+  $('locale').value = state.locale;
+  $('monthPicker').value = state.selectedMonth;
+  applyPersistedHistory();
+  bindEvents();
+  renderAll();
+
+  // Initialize collapsibles (persisted state)
+  initSection('toggleRecordsBtn','recordsBody','collapse_records');
+  initBoth();
+  // Explicit listeners for toggles
+  const _recBtn = document.getElementById('toggleRecordsBtn');
+  if(_recBtn) _recBtn.addEventListener('click', ()=>toggleSection('toggleRecordsBtn','recordsBody','collapse_records'));
+  const _sgkBtn = document.getElementById('toggleSgkBtn');
+  if(_sgkBtn) _sgkBtn.addEventListener('click', toggleBoth);
+  const _depoBtn = document.getElementById('toggleDepoPBtn');
+  if(_depoBtn) _depoBtn.addEventListener('click', toggleBoth);
+}
+
+function bindEvents(){
+  $('addBtn').addEventListener('click', ()=>{
+    const date = $('input-date').value;
+    const amount = parseAmount($('input-amount').value);
+    const paytype = 'NAKIT/POS';
+    const note = $('input-note').value||'';
+    if(!date) return alert('Tarih girin');
+    if(!(amount>0)) return alert('Geçerli tutar girin');
+    state.entries.unshift({id:makeId(), date, amount, note, paytype});
+    state.entries.sort((a,b)=>b.date.localeCompare(a.date));
+    $('input-amount').value=''; $('input-note').value='';
+    persist(); renderAll();
+  });
+
+  $('currency').addEventListener('change', e=>{ state.currency=e.target.value; persist(); renderAll(); });
+  $('locale').addEventListener('change', e=>{ state.locale=e.target.value; persist(); renderAll(); });
+
+  $('exportBtn').addEventListener('click', ()=>{
+    const header = ['date','amount','paytype','note'];
+    const rows = state.entries.map(r=>[r.date, r.amount, r.paytype, (r.note||'')]);
+    const csv = [header.join(','), ...rows.map(r=>r.map(x=>'"'+String(x).replaceAll('"','""')+'"').join(','))].join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='satis_kayitlari.csv'; a.click(); URL.revokeObjectURL(url);
+  });
+  $('importInput').addEventListener('change', async e=>{
+    const f=e.target.files?.[0]; if(!f) return;
+    const txt = await f.text();
+    const lines = txt.split(/\r?\n/).filter(Boolean);
+    const head = lines[0].split(',').map(s=>s.trim().toLowerCase());
+    const idx = {date:head.indexOf('date'), amount:head.indexOf('amount'), note:head.indexOf('note'), paytype:head.indexOf('paytype')};
+    for (let i=1;i<lines.length;i++){
+      const cols = lines[i].split(',');
+      const date = cols[idx.date]||todayStr();
+      const amount = parseAmount(cols[idx.amount]||0);
+      const note = cols[idx.note]||'';
+      const paytype = (cols[idx.paytype]||'NAKIT/POS');
+      if(amount>0) state.entries.push({id:makeId(), date, amount, note, paytype});
+    }
+    state.entries.sort((a,b)=>b.date.localeCompare(a.date));
+    persist(); renderAll();
+    e.target.value='';
+  });
+
+  
+$('resetBtn').addEventListener('click', (e)=>{
+  e.preventDefault();
+  const modal = document.getElementById('confirm-reset');
+  if(modal) modal.classList.remove('hidden');
+});
+$('sgk-add').addEventListener('click', ()=>{
+    const date=$('sgk-date').value||todayStr();
+    const amount=parseAmount($('sgk-amount').value);
+    const note=$('sgk-note').value||'';
+    if(!(amount>0)) return alert('Geçerli tutar girin');
+    state.sgkTx.unshift({id:makeId(), date, amount, note});
+    state.sgkTx.sort((a,b)=>b.date.localeCompare(a.date));
+    $('sgk-amount').value=''; $('sgk-note').value='';
+    persist(); renderAll();
+  });
+
+  $('depo-p-add').addEventListener('click', ()=>{
+    const date=$('depo-p-date').value||todayStr();
+    const amount=parseAmount($('depo-p-amount').value);
+    const supplier=$('depo-p-supp').value||'';
+    const note=$('depo-p-note').value||'';
+    if(!(amount>0)) return alert('Geçerli tutar girin');
+    state.depoPay.unshift({id:makeId(), date, amount, supplier, note});
+    state.depoPay.sort((a,b)=>b.date.localeCompare(a.date));
+    $('depo-p-amount').value=''; $('depo-p-supp').value=''; $('depo-p-note').value='';
+    persist(); renderAll();
+  });
+
+  $('search').addEventListener('input', e=>{ state.query=(e.target.value||'').toLowerCase(); renderTable(); });
+
+  $('monthPicker').addEventListener('change', e=> setSelectedMonth(e.target.value));
+  $('prevMonthBtn').addEventListener('click', ()=> shiftMonth(-1));
+  $('nextMonthBtn').addEventListener('click', ()=> shiftMonth(+1));
+  // Defensive bindings (in addition to inline)
+  $('toggleHistoryBtn').addEventListener('click', toggleHistoryInline);
+}
+
+function computeKPIs(){
+  const today = todayStr();
+  const now = new Date(); const curMonth = monthKey(now);
+  let sumToday=0, sumMonth=0;
+  for (const e of state.entries){
+    if (e.date===today) sumToday += e.amount;
+    if (e.date.startsWith(curMonth)) sumMonth += e.amount;
+  }
+  const sgkSales = state.entries.filter(e=> (e.paytype||'').toUpperCase().includes('SGK')).reduce((s,e)=>s+e.amount,0);
+  const sgkColl  = state.sgkTx.reduce((s,t)=>s+parseAmount(t.amount),0);
+  const sgkRecv  = sgkSales - sgkColl;
+  const depoP = state.depoPay.reduce((s,t)=>s+parseAmount(t.amount),0);
+  const depoPayable = depoP;
+  return { sumToday, sumMonth, sgkRecv, depoPayable };
+}
+
+function build30dData(){
+  const map = new Map(); const t = new Date();
+  for (let i=29;i>=0;i--){ const d=new Date(t); d.setDate(t.getDate()-i); map.set(d.toISOString().slice(0,10),0); }
+  for (const e of state.entries){ if (map.has(e.date)) map.set(e.date, map.get(e.date)+e.amount); }
+  return Array.from(map.entries()).map(([date, amount])=>({date, amount}));
+}
+function buildMonthlyData(){
+  const y = new Date().getFullYear();
+  const arr = Array.from({length:12},(_,i)=>({label:`${y}-${String(i+1).padStart(2,'0')}`, amount:0}));
+  for (const e of state.entries){ const d = new Date(e.date); if (d.getFullYear()===y) arr[d.getMonth()].amount += e.amount; }
+  return arr;
+}
+
+function renderAll(){ renderTotals(); renderCharts(); renderTable(); renderHistory(); renderLedgers(); }
+
+function renderTotals(){
+  const { sumToday, sumMonth, sgkRecv, depoPayable } = computeKPIs();
+  document.getElementById('sum-today').textContent = formatCurrency(sumToday, state.currency, state.locale);
+  document.getElementById('sum-month').textContent = formatCurrency(sumMonth, state.currency, state.locale);
+  document.getElementById('kpi-sgk').textContent  = '+ ' + formatCurrency(Math.abs(sgkRecv), state.currency, state.locale);
+  document.getElementById('kpi-depo').textContent = '− ' + formatCurrency(Math.abs(depoPayable), state.currency, state.locale);
+}
+
+function renderCharts(){
+  const d30 = build30dData(), mly = buildMonthlyData();
+  if (window._c30) window._c30.destroy();
+  window._c30 = new Chart(document.getElementById('chart-30d'), {
+    type:'line', data:{labels:d30.map(x=>x.date), datasets:[{label:'Tutar', data:d30.map(x=>x.amount), borderWidth:2, tension:.25}]},
+    options:{plugins:{tooltip:{callbacks:{label:(ctx)=>formatCurrency(ctx.parsed.y,state.currency,state.locale)}},
+             legend:{display:true}}, scales:{y:{ticks:{callback:v=>formatCurrency(v,state.currency,state.locale)}}}}
+  });
+  if (window._cm) window._cm.destroy();
+  window._cm = new Chart(document.getElementById('chart-monthly'), {
+    type:'bar', data:{labels:mly.map(x=>x.label), datasets:[{label:'Tutar', data:mly.map(x=>x.amount)}]},
+    options:{plugins:{tooltip:{callbacks:{label:(ctx)=>formatCurrency(ctx.parsed.y,state.currency,state.locale)}},
+             legend:{display:true}}, scales:{y:{ticks:{callback:v=>formatCurrency(v,state.currency,state.locale)}}}}
+  });
+}
+
+function renderTable(){
+  const q=(state.query||'').toLowerCase();
+  const rows = state.entries.filter(e=> !q ||
+    e.date.toLowerCase().includes(q) ||
+    String(e.amount).includes(q) ||
+    (e.note||'').toLowerCase().includes(q) ||
+    (e.paytype||'').toLowerCase().includes(q)
+  );
+  const tbody = document.getElementById('tbody'); tbody.innerHTML='';
+  for (const e of rows){
+    const tr=document.createElement('tr'); tr.className='border-t';
+    tr.innerHTML = `<td class="px-4 py-2">${e.date}</td>
+                    <td class="px-4 py-2 text-right font-medium">${formatCurrency(e.amount,state.currency,state.locale)}</td>
+                    <td class="px-4 py-2">${e.paytype||'NAKIT/POS'}</td>
+                    <td class="px-4 py-2">${e.note||''}</td>
+                    <td class="px-4 py-2 text-right"><button class="btn text-red-600">Sil</button></td>`;
+    tr.querySelector('button').addEventListener('click', ()=>{ state.entries = state.entries.filter(x=>x!==e); persist(); renderAll(); });
+    tbody.appendChild(tr);
+  }
+  document.getElementById('sum-all').textContent = formatCurrency(state.entries.reduce((s,x)=>s+x.amount,0), state.currency, state.locale);
+}
+
+function setSelectedMonth(ym){
+  if(!/^\d{4}-\d{2}$/.test(ym)) return;
+  state.selectedMonth = ym; document.getElementById('monthPicker').value = ym; persist(); renderHistory();
+}
+function visibleYmBounds(){
+  const todayYm = new Date().toISOString().slice(0,7);
+  if (!state.entries.length) return {min:todayYm, max:todayYm};
+  const minDate = state.entries.reduce((m,e)=> e.date < m ? e.date : m, state.entries[0].date);
+  return {min:minDate.slice(0,7), max:todayYm};
+}
+function shiftMonth(delta){
+  const [y,m]=state.selectedMonth.split('-').map(n=>parseInt(n,10));
+  const d = new Date(Date.UTC(y,m-1,1)); d.setUTCMonth(d.getUTCMonth()+delta);
+  let nextYm = d.toISOString().slice(0,7);
+  const {min,max}=visibleYmBounds();
+  if(nextYm<min) nextYm=min; if(nextYm>max) nextYm=max;
+  setSelectedMonth(nextYm); updateMonthNavButtons();
+}
+function updateMonthNavButtons(){
+  const {min,max}=visibleYmBounds(); const cur=state.selectedMonth;
+  const prevDisabled = cur<=min, nextDisabled = cur>=max;
+  document.getElementById('prevMonthBtn').disabled=prevDisabled; document.getElementById('nextMonthBtn').disabled=nextDisabled;
+  document.getElementById('prevMonthBtn').classList.toggle('opacity-50', prevDisabled);
+  document.getElementById('nextMonthBtn').classList.toggle('opacity-50', nextDisabled);
+}
+function applyPersistedHistory(){
+  const body=document.getElementById('historyBody'); const icon=document.getElementById('toggleIcon');
+  if(!body||!icon) return;
+  const collapsed = localStorage.getItem('ciro_hist_collapsed')==='1';
+  if (collapsed){ body.classList.add('hidden'); icon.textContent='▸'; state.histCollapsed=true; }
+  else { body.classList.remove('hidden'); icon.textContent='▾'; state.histCollapsed=false; }
+}
+function toggleHistoryInline(){
+  try{
+    var body = document.getElementById('historyBody');
+    var icon = document.getElementById('toggleIcon');
+    if(!body || !icon) return;
+    var willHide = !body.classList.contains('hidden');
+    if (willHide){ body.classList.add('hidden'); icon.textContent='▸'; state.histCollapsed=true; }
+    else { body.classList.remove('hidden'); icon.textContent='▾'; state.histCollapsed=false; }
+    persist();
+  }catch(e){ console.error(e); }
+}
+function monthDaysData(ym){
+  const [y,m]=ym.split('-').map(n=>parseInt(n,10));
+  const daysInMonth = new Date(y,m,0).getDate();
+  const arr = Array.from({length:daysInMonth},(_,i)=>({ day:i+1, label:`${ym}-${String(i+1).padStart(2,'0')}`, amount:0 }));
+  for (const e of state.entries){ if (e.date.startsWith(ym)){ const d=parseInt(e.date.slice(8,10),10); if(arr[d-1]) arr[d-1].amount += e.amount; } }
+  return arr;
+}
+function last12MonthsTotals(refYm){
+  const [ry,rm]=refYm.split('-').map(n=>parseInt(n,10)); const res=[];
+  for (let i=11;i>=0;i--){ const d=new Date(Date.UTC(ry,rm-1,1)); d.setUTCMonth(d.getUTCMonth()-i);
+    const ym=d.toISOString().slice(0,7); let total=0; for(const e of state.entries) if(e.date.startsWith(ym)) total+=e.amount; res.push({ym,total}); }
+  return res.reverse();
+}
+function renderHistory(){
+  document.getElementById('selMonthTitle').textContent = state.selectedMonth;
+  const arr = monthDaysData(state.selectedMonth);
+  const tbody = document.getElementById('histDaysTbody'); tbody.innerHTML=''; let sum=0;
+  for (const r of arr){ sum+=r.amount; const tr=document.createElement('tr'); tr.className='border-t';
+    tr.innerHTML=`<td class="px-4 py-2">${r.label}</td><td class="px-4 py-2 text-right">${formatCurrency(r.amount,state.currency,state.locale)}</td>`; tbody.appendChild(tr); }
+  document.getElementById('histMonthSum').textContent = formatCurrency(sum,state.currency,state.locale);
+  document.getElementById('histMonthAvg').textContent = formatCurrency(arr.length?sum/arr.length:0,state.currency,state.locale);
+  if (window._cmd) window._cmd.destroy();
+  window._cmd = new Chart(document.getElementById('chart-month-days'), {
+    type:'bar', data:{labels:arr.map(d=>String(d.day)), datasets:[{label:state.selectedMonth, data:arr.map(d=>d.amount)}]},
+    options:{plugins:{tooltip:{callbacks:{label:(ctx)=>formatCurrency(ctx.parsed.y,state.currency,state.locale)}}, legend:{display:true}},
+             scales:{y:{ticks:{callback:v=>formatCurrency(v,state.currency,state.locale)}}}}
+  });
+  const last12 = last12MonthsTotals(state.selectedMonth);
+  const t12 = document.getElementById('last12Tbody'); t12.innerHTML='';
+  const rows=[...last12].sort((a,b)=>b.ym.localeCompare(a.ym));
+  for (const r of rows){ const tr=document.createElement('tr'); tr.className='border-t hover:bg-slate-50 cursor-pointer';
+    tr.innerHTML=`<td class="px-4 py-2">${r.ym}</td><td class="px-4 py-2 text-right">${formatCurrency(r.total,state.currency,state.locale)}</td>`;
+    tr.addEventListener('click', ()=> setSelectedMonth(r.ym)); t12.appendChild(tr); }
+  updateMonthNavButtons();
+}
+
+function renderLedgers(){
+  const sBody = document.getElementById('sgk-tbody'); sBody.innerHTML='';
+  for (const t of state.sgkTx){
+    const tr=document.createElement('tr'); tr.className='border-t';
+    tr.innerHTML = `<td class="px-3 py-2">${t.date}</td>
+                    <td class="px-3 py-2 text-right">${formatCurrency(t.amount,state.currency,state.locale)}</td>
+                    <td class="px-3 py-2">${t.note||''}</td>
+                    <td class="px-3 py-2 text-right"><button class="btn text-red-600">Sil</button></td>`;
+    tr.querySelector('button').addEventListener('click', ()=>{ state.sgkTx = state.sgkTx.filter(x=>x!==t); persist(); renderAll(); });
+    sBody.appendChild(tr);
+  }
+  const pBody = document.getElementById('depo-p-tbody'); pBody.innerHTML='';
+  for (const t of state.depoPay){
+    const tr=document.createElement('tr'); tr.className='border-t';
+    tr.innerHTML = `<td class="px-3 py-2">${t.date}</td>
+                    <td class="px-3 py-2 text-right">${formatCurrency(t.amount,state.currency,state.locale)}</td>
+                    <td class="px-3 py-2">${t.supplier||''}</td>
+                    <td class="px-3 py-2">${t.note||''}</td>
+                    <td class="px-3 py-2 text-right"><button class="btn text-red-600">Sil</button></td>`;
+    tr.querySelector('button').addEventListener('click', ()=>{ state.depoPay = state.depoPay.filter(x=>x!==t); persist(); renderAll(); });
+    pBody.appendChild(tr);
+  }
+}
+
+// Global delegation (her ihtimale karşı)
+document.addEventListener('click', function(ev){
+  var t = ev.target;
+  var btn = t.closest ? t.closest('#toggleHistoryBtn, #toggleRecordsBtn, #toggleSgkBtn, #toggleDepoPBtn') : null;
+  if(!btn) return;
+  if(btn.id === 'toggleHistoryBtn'){ ev.preventDefault(); try{ toggleHistoryInline(); }catch(e){} return; }
+  if(btn.id === 'toggleRecordsBtn'){ ev.preventDefault(); try{ toggleSection('toggleRecordsBtn','recordsBody','collapse_records'); }catch(e){} return; }
+  if(btn.id === 'toggleSgkBtn' || btn.id === 'toggleDepoPBtn'){ ev.preventDefault(); try{ toggleBoth(); }catch(e){} return; }
+}, true);
+
+// Collapsible helpers
+function setCollapse(key, val){ try{ localStorage.setItem(key, val?'1':'0'); }catch(e){} }
+function getCollapse(key){ try{ return localStorage.getItem(key)==='1'; }catch(e){ return false; } }
+function toggleSection(btnId, bodyId, key){
+  const btn = document.getElementById(btnId);
+  const body = document.getElementById(bodyId);
+  if(!btn||!body) return;
+  const willHide = !body.classList.contains('hidden');
+  if(willHide){ body.classList.add('hidden'); if(btn.querySelector('span')) btn.querySelector('span').textContent='▸'; }
+  else{ body.classList.remove('hidden'); if(btn.querySelector('span')) btn.querySelector('span').textContent='▾'; }
+  setCollapse(key, willHide);
+}
+// Shared toggle for SGK & Depo Ödemesi
+function toggleBoth(){
+  const key = 'collapse_sgk_depop';
+  const sgkBtn = document.getElementById('toggleSgkBtn');
+  const depBtn = document.getElementById('toggleDepoPBtn');
+  const sgkBody = document.getElementById('sgkBody');
+  const depBody = document.getElementById('depoPBody');
+  if(!sgkBody || !depBody) return;
+  const willHide = !(sgkBody.classList.contains('hidden') && depBody.classList.contains('hidden'));
+  if (willHide){
+    sgkBody.classList.add('hidden'); depBody.classList.add('hidden');
+    if (sgkBtn) sgkBtn.querySelector('span').textContent='▸';
+    if (depBtn) depBtn.querySelector('span').textContent='▸';
+  } else {
+    sgkBody.classList.remove('hidden'); depBody.classList.remove('hidden');
+    if (sgkBtn) sgkBtn.querySelector('span').textContent='▾';
+    if (depBtn) depBtn.querySelector('span').textContent='▾';
+  }
+  setCollapse(key, willHide);
+}
+
+
+function initSection(btnId, bodyId, key){
+  const btn = document.getElementById(btnId);
+  const body = document.getElementById(bodyId);
+  if(!btn||!body) return;
+  const collapsed = localStorage.getItem(key)==='1';
+  if(collapsed){ body.classList.add('hidden'); if(btn.querySelector('span')) btn.querySelector('span').textContent='▸'; }
+  else{ body.classList.remove('hidden'); if(btn.querySelector('span')) btn.querySelector('span').textContent='▾'; }
+}
+function initBoth(){
+  const key = 'collapse_sgk_depop';
+  const sgkBtn = document.getElementById('toggleSgkBtn');
+  const depBtn = document.getElementById('toggleDepoPBtn');
+  const sgkBody = document.getElementById('sgkBody');
+  const depBody = document.getElementById('depoPBody');
+  const collapsed = localStorage.getItem(key)==='1';
+  if (collapsed){
+    if (sgkBody) sgkBody.classList.add('hidden');
+    if (depBody) depBody.classList.add('hidden');
+    if (sgkBtn) sgkBtn.querySelector('span').textContent='▸';
+    if (depBtn) depBtn.querySelector('span').textContent='▸';
+  } else {
+    if (sgkBody) sgkBody.classList.remove('hidden');
+    if (depBody) depBody.classList.remove('hidden');
+    if (sgkBtn) sgkBtn.querySelector('span').textContent='▾';
+    if (depBtn) depBtn.querySelector('span').textContent='▾';
+  }
+}
+
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
+<!-- Confirm Reset Modal -->
+<div id="confirm-reset" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-black/40"></div>
+  <div class="absolute inset-0 flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white rounded-xl shadow p-5">
+      <h3 class="text-lg font-semibold mb-2">Sıfırlama Onayı</h3>
+      <p class="text-slate-600 mb-4">Tüm veriler kalıcı olarak silinecek (Günlük kayıtlar, SGK tahsilatları, depo ödemeleri). Emin misiniz?</p>
+      <div class="flex justify-end gap-2">
+        <button id="reset-cancel" class="btn">Vazgeç</button>
+        <button id="reset-confirm" class="btn bg-red-600 text-white border-red-600 hover:bg-red-700">Evet, sil</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    const modal = document.getElementById('confirm-reset');
+    const cancelBtn = document.getElementById('reset-cancel');
+    const confirmBtn = document.getElementById('reset-confirm');
+
+    function hide(){ modal?.classList.add('hidden'); }
+
+    cancelBtn?.addEventListener('click', hide);
+    modal?.addEventListener('click', (e)=>{ if(e.target === modal) hide(); });
+    document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') hide(); });
+
+    confirmBtn?.addEventListener('click', ()=>{
+      try{
+        state.entries = [];
+        state.sgkTx = [];
+        state.depoPay = [];
+        persist();
+        renderAll();
+      }finally{
+        hide();
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>
